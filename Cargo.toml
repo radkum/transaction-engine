@@ -1,0 +1,1 @@
+workspace = { resolver = "2", members = ["components/cli", "components/engine"] }
