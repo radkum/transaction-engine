@@ -25,18 +25,22 @@ async fn internal_process_transactions<R: std::io::Read, W: std::io::Write>(
 
     let mut engine = Engine::new();
 
+    // we need to process records (transactions) in the right order, so we wait until
+    // the transaction is sent and then move on to the next one
     for result in rdr.deserialize() {
         let record: Record = result?;
         engine.process_record(record).await?;
     }
 
+    // Once each transaction is processed, we can receive portfolios (fund summaries) for each client
+    // we don't need them sorted, so we just print them out of order
     engine.print_wallets(io_writer).await?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Cursor, ErrorKind};
+    use std::io::Cursor;
 
     use super::*;
     use crate::EngineError::{CsvError, RecordError};
@@ -121,7 +125,7 @@ unknown123, 1,1,1"#;
         let Err(RecordError(error)) = test_process_transaction(input_str.as_bytes()).await else {
             panic!();
         };
-        assert_eq!(error.to_string(), "Unknown transaction type");
+        assert_eq!(error.to_string(), "Unknown transaction type: \"unknown123\"");
     }
 
     #[tokio::test]
@@ -239,6 +243,72 @@ deposit, 1, 1, 1.0"#;
         let expected_str = r#"client,available,held,total
 1,0.5,0,0.5,true
 2,2,0,2,false"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
+
+    #[tokio::test]
+    async fn test_case_8() {
+        // there is no debit on account after withdraw so dispute and chargeback are ignored
+        let input_str = r#"type, client, tx, amount
+deposit, 1, 1, 1.0
+withdrawal, 1, 2, 1.0
+dispute, 1,1,
+chargeback, 1,1,"#;
+
+        let expected_str = r#"client,available,held,total
+1,0,0,0,false"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
+
+    #[tokio::test]
+    async fn test_case_9() {
+        let input_str = r#"type, client, tx, amount
+deposit, 1, 1, 1.0
+deposit, 1, 2, 3.0
+dispute, 1, 2,
+withdrawal, 1,3, 2.1111"#;
+
+        let expected_str = r#"client,available,held,total
+1,1,3,4,false"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
+
+    #[tokio::test]
+    async fn test_case_10() {
+        let input_str = r#"type, client, tx, amount
+deposit, 1, 1, 1.0
+deposit, 1, 2, 3.0
+dispute, 1, 2,
+withdrawal, 1,3, 2.1111
+resolve, 1,2,"#;
+
+        let expected_str = r#"client,available,held,total
+1,4,0,4,false"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
+
+    #[tokio::test]
+    async fn test_case_11() {
+        let input_str = r#"type, client, tx, amount
+deposit, 1, 1, 1.0
+deposit, 1, 2, 3.0
+dispute, 1, 2,
+withdrawal, 1,3, 2.1111
+resolve, 1,2,
+withdrawal, 1,3, 2.1111
+dispute, 1, 2,
+chargeback, 1,2,"#;
+
+        let expected_str = r#"client,available,held,total
+1,1.8889,0,1.8889,false"#;
 
         let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
         assert_eq!(output_str.as_str(), expected_str);

@@ -28,6 +28,7 @@ impl Engine {
         let client_id = r.client_id;
         let tx_info = TransactionInfo::from_record(r)?;
 
+        // if client doesn't exists, create one and insert to map
         if !self.clients.contains_key(&client_id) {
             self.clients.insert(client_id, Client::new());
         }

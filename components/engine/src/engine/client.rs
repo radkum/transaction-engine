@@ -22,25 +22,29 @@ pub(super) type Clients = HashMap<ClientId, Client>;
 
 pub(super) struct Client {
     sender: Sender<TransactionInfo>,
-    manager: Option<JoinHandle<Wallet>>,
+    join_handle: Option<JoinHandle<Wallet>>,
 }
 
 impl Client {
     pub(super) fn new() -> Self {
         let (tx, rx) = mpsc::channel::<TransactionInfo>(32);
 
-        let mut client = Self { sender: tx, manager: None };
+        let mut client = Self { sender: tx, join_handle: None };
 
+        // we want process transactions for each client separately. It allows as to parallelize work
+        // and get better performance. There are disadvantages (eg. each tokio task must work till to
+        // finish of program, regardless if do something or not) but it can be easy mitigated (eg.
+        // add timeout to receiver and then save a state, and start only when new transaction is sent)
         client.run(rx);
         client
     }
 
     fn run(&mut self, mut receiver: Receiver<TransactionInfo>) {
-        let manager = tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut wallet = Wallet::default();
             let mut tx_history = Transactions::default();
 
-            // Start receiving messages
+            // messages are received till to TxAction::Close message. Then task return wallet
             while let Some(tx_info) = receiver.recv().await {
                 if wallet.locked() {
                     // only close action works. Other should be skipped till to unlocking client
@@ -65,11 +69,13 @@ impl Client {
                         };
 
                         let TxResult::Deposited(amount) = deposit_tx else {
-                            log::warn!("There is no disputed transaction to dispute");
+                            log::warn!("There is no deposited transaction to dispute");
                             continue;
                         };
 
                         if wallet.dispute(*amount) {
+                            // instead of deleting the deposited transaction, we simply insert a new
+                            // disputed transaction that replaces the old one
                             tx_history.insert(tx_info.id(), TxResult::Disputed(*amount));
                         }
                     },
@@ -85,6 +91,9 @@ impl Client {
                         };
 
                         wallet.resolve(*amount);
+
+                        // instead of deleting the disputed transaction, we simply insert a new
+                        // deposited transaction that replaces the old one
                         tx_history.insert(tx_info.id(), TxResult::Deposited(*amount));
                     },
                     TxAction::Chargeback => {
@@ -99,6 +108,9 @@ impl Client {
                         };
 
                         wallet.chargeback(*amount);
+
+                        // we can't simply replace a dispute transaction with another in this case,
+                        // because charge back revert an transaction. Therefore we remove it from history
                         tx_history.remove(&tx_info.id());
                     },
                     TxAction::Close => receiver.close(),
@@ -110,7 +122,7 @@ impl Client {
             wallet
         });
 
-        self.manager = Some(manager)
+        self.join_handle = Some(handle)
     }
 
     pub(super) async fn process_transaction(
@@ -123,7 +135,7 @@ impl Client {
 
     pub(super) async fn wallet(&mut self) -> Result<Wallet, EngineError> {
         self.close().await?;
-        if let Some(wallet) = &mut self.manager {
+        if let Some(wallet) = &mut self.join_handle {
             Ok(wallet.await?)
         } else {
             // this should not happen. unreachable! or error?
@@ -132,6 +144,7 @@ impl Client {
     }
 
     pub(super) async fn close(&mut self) -> Result<(), SendError<TransactionInfo>> {
+        // the easiest solution to close wallet computation is to send proper message
         self.process_transaction(TransactionInfo::close()).await?;
         Ok(())
     }

@@ -76,7 +76,12 @@ impl TransactionInfo {
                 };
                 TxAction::Chargeback
             },
-            _ => return Err(EngineError::RecordError("Unknown transaction type".to_string())),
+            _ => {
+                return Err(EngineError::RecordError(format!(
+                    "Unknown transaction type: \"{}\"",
+                    r.ty.as_str()
+                )))
+            },
         };
 
         Ok(Self { id: r.tx_id, tx })

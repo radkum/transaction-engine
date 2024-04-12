@@ -43,7 +43,7 @@ impl Wallet {
             self.held += amount;
             true
         } else {
-            log::warn!("There is no enough funds to dipsute. Available funds: {amount}");
+            log::warn!("There is no enough funds to dispute. Available funds: {amount}");
             false
         }
     }
