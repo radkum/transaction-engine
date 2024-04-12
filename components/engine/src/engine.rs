@@ -40,6 +40,12 @@ impl Engine {
     }
 
     pub(crate) async fn print_wallets<W: Write>(&mut self, mut out: W) -> Result<(), EngineError> {
+        #[cfg(test)]
+        {
+            self.print_sorted_wallets(out).await?;
+            return Ok(());
+        }
+
         writeln!(out, "client,available,held,total")?;
         for (id, client) in self.clients.iter_mut() {
             let wallet = client.wallet().await?;

@@ -14,17 +14,25 @@ fn main() -> anyhow::Result<()> {
     }
 
     let Some(input_csv) = args[1].to_str() else {
-        eprintln!("{}: incorrect CLI arg", Style::new().red().bold().apply_to("ERR"),);
-        std::process::exit(2);
+        report_error("Incorrect CLI arg", 2);
     };
 
-    if let Err(e) = engine::process_file(input_csv, &mut std::io::stdout()) {
-        eprintln!("{}: {:?}", Style::new().red().bold().apply_to("ERR"), e);
-        std::process::exit(1);
-    };
+    // check if file extension is ".csv"
+    if !input_csv.ends_with(".csv") {
+        log::info!("Incorrect file extension. Extension must be \".csv\"");
+    }
+
+    let file = std::fs::File::open(input_csv)?;
+    engine::process_transactions(file, &mut std::io::stdout())?;
+
     Ok(())
 }
 
 fn print_help() {
     println!("Usage:\n   cargo run -- <input.csv> > <output.csv>");
+}
+
+fn report_error(msg: &str, error_code: i32) -> ! {
+    eprintln!("{}: {}", Style::new().red().bold().apply_to("ERR"), msg);
+    std::process::exit(error_code);
 }
