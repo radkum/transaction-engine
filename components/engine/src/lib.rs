@@ -313,4 +313,41 @@ chargeback, 1,2,"#;
         let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
         assert_eq!(output_str.as_str(), expected_str);
     }
+
+    #[tokio::test]
+    async fn test_case_12() {
+        let input_str = r#"type, client, tx, amount
+deposit, 3, 1, 5.1234
+withdrawal, 3, 2, 4.1
+deposit, 6, 3, 5.1234
+dispute, 6, 3,
+resolve, 6, 3,"#;
+
+        let expected_str = r#"client,available,held,total
+3,1.0234,0,1.0234,false
+6,5.1234,0,5.1234,false"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
+
+    #[tokio::test]
+    async fn test_case_13() {
+        let input_str = r#"type, client, tx, amount
+deposit, 3, 1, 5.1
+withdrawal, 3, 2, 4.1234
+withdrawal, 3, 5, 0.9766
+deposit, 6, 3, 5.1234
+dispute, 6, 3,
+resolve, 6, 3,
+dispute, 6, 3,
+chargeback, 6, 3,"#;
+
+        let expected_str = r#"client,available,held,total
+3,0,0,0,false
+6,0,0,0,true"#;
+
+        let output_str = test_process_transaction(input_str.as_bytes()).await.unwrap();
+        assert_eq!(output_str.as_str(), expected_str);
+    }
 }
