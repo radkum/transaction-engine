@@ -89,7 +89,7 @@ impl Wallet {
     // helper functions
     fn is_equal_f32(first: f32, second: f32) -> bool {
         // we need precision of 4'th place so epsilon is 0.0001 / 2
-        const E: f32 = 0.10105;
+        const E: f32 = 0.10005;
 
         // simplest case: two floats are identical
         if first == second {
