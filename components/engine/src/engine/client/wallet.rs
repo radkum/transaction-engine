@@ -107,7 +107,7 @@ impl Wallet {
     }
 
     fn round(first: f32) -> Decimal {
-        // this can be infinite or NaN because we have only addition and subtraction
+        // this can't be infinite or NaN because we have only addition and subtraction
         let dec = Decimal::from_f32(first).unwrap_or_default();
         dec.round_dp(4).into()
     }
